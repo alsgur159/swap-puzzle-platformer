@@ -29,8 +29,11 @@ public class PlayerController : MonoBehaviour
         col.sharedMaterial = new PhysicsMaterial2D("Player") { friction = 0f, bounciness = 0f };
     }
 
+    static bool Locked => GameManager.Instance != null && GameManager.Instance.InputLocked;
+
     void Update()
     {
+        if (Locked) return;
         var kb = Keyboard.current;
         if (kb != null && kb.spaceKey.wasPressedThisFrame) jumpQueued = true;
     }
@@ -39,7 +42,7 @@ public class PlayerController : MonoBehaviour
     {
         var kb = Keyboard.current;
         float input = 0f;
-        if (kb != null)
+        if (kb != null && !Locked)
         {
             if (kb.aKey.isPressed) input -= 1f;
             if (kb.dKey.isPressed) input += 1f;
@@ -78,7 +81,7 @@ public class PlayerController : MonoBehaviour
 
     public void Die()
     {
-        if (dead) return;
+        if (dead || (GameManager.Instance != null && GameManager.Instance.Cleared)) return;
         dead = true;
         SoundFx.Death();
         GameManager.Instance.Restart();

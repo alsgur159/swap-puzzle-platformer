@@ -76,7 +76,6 @@ public static class PrefabBuilder
         go.transform.position = pos;
         if (size.HasValue)
         {
-            // 타일 스프라이트(블록·가시)는 늘리지 않고 반복해서 그리도록 크기만 바꾼다.
             var sr = go.GetComponent<SpriteRenderer>();
             if (sr != null && sr.drawMode == SpriteDrawMode.Tiled)
             {

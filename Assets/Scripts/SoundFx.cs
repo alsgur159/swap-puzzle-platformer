@@ -1,13 +1,13 @@
 using UnityEngine;
 
-// 씬이 재시작돼도 끊기지 않도록 DontDestroyOnLoad로 유지되는 효과음/BGM 재생기.
-// 클립은 Resources/Audio 에서 이름으로 불러온다.
 public class SoundFx : MonoBehaviour
 {
+    const float MusicBase = 0.35f;
+
     static SoundFx instance;
 
-    AudioSource sfx;
-    AudioClip jump, swap, swapFail, death, clear;
+    AudioSource sfx, music;
+    AudioClip jump, swap, swapFail, death, clear, click, hover;
 
     public static void Ensure()
     {
@@ -20,20 +20,31 @@ public class SoundFx : MonoBehaviour
     void Awake()
     {
         sfx = gameObject.AddComponent<AudioSource>();
+        sfx.ignoreListenerPause = true;
         jump = Load("jump");
         swap = Load("swap");
         swapFail = Load("swap_fail");
         death = Load("death");
         clear = Load("clear");
+        click = Load("ui_click");
+        hover = Load("ui_hover");
 
-        var music = gameObject.AddComponent<AudioSource>();
+        music = gameObject.AddComponent<AudioSource>();
         music.clip = Load("bgm");
         music.loop = true;
-        music.volume = 0.35f;
+        ApplyVolumes();
         if (music.clip != null) music.Play();
     }
 
     static AudioClip Load(string name) => Resources.Load<AudioClip>("Audio/" + name);
+
+    void ApplyVolumes()
+    {
+        sfx.volume = GameSettings.Sfx;
+        music.volume = MusicBase * GameSettings.Bgm;
+    }
+
+    public static void RefreshVolumes() { if (instance) instance.ApplyVolumes(); }
 
     void Play(AudioClip clip, float volume = 1f)
     {
@@ -45,4 +56,6 @@ public class SoundFx : MonoBehaviour
     public static void SwapFail() { if (instance) instance.Play(instance.swapFail, 0.7f); }
     public static void Death() { if (instance) instance.Play(instance.death); }
     public static void Clear() { if (instance) instance.Play(instance.clear); }
+    public static void Click() { if (instance) instance.Play(instance.click, 0.8f); }
+    public static void Hover() { if (instance) instance.Play(instance.hover, 0.6f); }
 }

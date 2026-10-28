@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 public class SwapController : MonoBehaviour
@@ -49,8 +50,10 @@ public class SwapController : MonoBehaviour
         var mouse = Mouse.current;
         if (mouse == null || cam == null || Time.timeScale == 0f) return;
 
-        line.enabled = SwapsMax > 0;
-        if (SwapsMax == 0) { highlight.enabled = false; return; }
+        bool locked = GameManager.Instance != null && GameManager.Instance.InputLocked;
+        bool overUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        line.enabled = SwapsMax > 0 && !locked && !overUI;
+        if (!line.enabled) { highlight.enabled = false; return; }
 
         Vector2 mouseWorld = cam.ScreenToWorldPoint(mouse.position.ReadValue());
         Vector2 from = player.Rb.position;

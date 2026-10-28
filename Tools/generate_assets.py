@@ -1,8 +1,4 @@
-"""Generates the game's pixel-art sprites and chiptune sounds (no external deps).
 
-Run from the project root:  python Tools/generate_assets.py
-Outputs: Assets/Art/*.png, Assets/Resources/Audio/*.wav
-"""
 import math
 import os
 import random
@@ -12,10 +8,9 @@ import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ART = os.path.join(ROOT, "Assets", "Art")
+UI = os.path.join(ROOT, "Assets", "Resources", "UI")
 AUDIO = os.path.join(ROOT, "Assets", "Resources", "Audio")
 
-
-# ---------------------------------------------------------------- sprites
 
 def hexrgba(h, a=255):
     h = h.lstrip("#")
@@ -177,7 +172,6 @@ PAD_PAL = {
 }
 
 def make_door():
-    # 16x24 exit portal: green frame with glowing interior.
     rows = []
     for y in range(24):
         r = []
@@ -216,7 +210,224 @@ def sprites():
     write_png(os.path.join(ART, "goal.png"), make_door(), DOOR_PAL)
 
 
-# ------------------------------------------------------------------ audio
+def write_rgba(path, w, h, px):
+    write_png(path, ["".join(chr(256 + x + y * w) for x in range(w)) for y in range(h)],
+              {chr(256 + i): c for i, c in enumerate(px)})
+
+
+def frame(w, h, rings, fill):
+    rows = []
+    for y in range(h):
+        r = ""
+        for x in range(w):
+            d = min(x, y, w - 1 - x, h - 1 - y)
+            r += rings[d] if d < len(rings) else fill(y)
+        rows.append(r)
+    return rows
+
+
+PANEL = frame(16, 16, "kbd", lambda y: "f")
+PANEL_PAL = {"k": hexrgba("080b16"), "b": hexrgba("5b6b9e"), "d": hexrgba("252d4a"), "f": hexrgba("161c30")}
+
+BUTTON = frame(16, 16, "k", lambda y: "h" if y <= 2 else ("s" if y >= 12 else "w"))
+BUTTON_PAL = {"k": hexrgba("080b16"), "h": hexrgba("ffffff"), "w": hexrgba("dde3f0"), "s": hexrgba("a3adc6")}
+
+TRACK = frame(8, 8, "k", lambda y: "f")
+TRACK_PAL = {"k": hexrgba("080b16"), "f": hexrgba("0f1424")}
+FILL = frame(8, 8, "", lambda y: "h" if y <= 1 else "w")
+FILL_PAL = {"h": hexrgba("ffffff"), "w": hexrgba("d0d8ea")}
+KNOB = frame(10, 14, "k", lambda y: "h" if y <= 2 else ("s" if y >= 11 else "w"))
+PILL = frame(8, 8, "", lambda y: "f")
+PILL_PAL = {"f": hexrgba("0b0e1a", 190)}
+
+
+def icon(fn):
+    on = [[fn(x + 0.5 - 8, y + 0.5 - 8) for x in range(16)] for y in range(16)]
+    rows = []
+    for y in range(16):
+        r = ""
+        for x in range(16):
+            if on[y][x]:
+                r += "w"
+            elif any(0 <= y + j < 16 and 0 <= x + i < 16 and on[y + j][x + i]
+                     for j in (-1, 0, 1) for i in (-1, 0, 1)):
+                r += "o"
+            else:
+                r += "."
+        rows.append(r)
+    return rows
+
+
+ICON_PAL = {"w": hexrgba("ffffff"), "o": hexrgba("080b16", 200)}
+
+
+def ang(x, y):
+    return math.atan2(y, x)
+
+
+def gear(x, y):
+    r = math.hypot(x, y)
+    teeth = math.cos(8 * ang(x, y)) > 0.2
+    return 2.3 < r <= (6.6 if teeth else 4.9)
+
+
+def seg(x, y, ax, ay, bx, by):
+    dx, dy = bx - ax, by - ay
+    t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(x - ax - t * dx, y - ay - t * dy)
+
+
+def tri(x, y, a, b, c):
+    def side(p, q):
+        return (x - q[0]) * (p[1] - q[1]) - (p[0] - q[0]) * (y - q[1])
+    s1, s2, s3 = side(a, b), side(b, c), side(c, a)
+    return not ((s1 < 0 or s2 < 0 or s3 < 0) and (s1 > 0 or s2 > 0 or s3 > 0))
+
+
+def restart(x, y):
+    r = math.hypot(x, y)
+    a = math.degrees(ang(x, y)) % 360
+    ring = 3.3 <= r <= 5.5 and not (290 < a < 350)
+    head = tri(x, y, (1.0, -7.5), (7.2, -4.4), (2.2, -1.2))
+    return ring or head
+
+
+def play(x, y):
+    return -3.5 <= x <= 5 and abs(y) <= (5 - x) * 0.62
+
+
+def door_exit(x, y):
+    box = (-6 <= x <= 1 and -6.5 <= y <= 6.5) and not (-4.5 < x < -0.5 and -5 < y < 5)
+    arrow = (-1.5 <= x <= 4.5 and abs(y) <= 1.0) or (3 <= x <= 6.8 and abs(y) <= (6.8 - x) * 0.9)
+    return box or arrow
+
+
+def lock(x, y):
+    body = -5 <= x <= 5 and -0.5 <= y <= 6
+    hole = abs(x) <= 0.9 and 1.5 <= y <= 4
+    r = math.hypot(x, y + 0.5)
+    shackle = y < -0.5 and 2.6 <= r <= 4.4
+    return (body and not hole) or shackle
+
+
+def check(x, y):
+    return seg(x, y, -5.0, 0.0, -1.5, 3.8) <= 1.4 or seg(x, y, -1.5, 3.8, 5.5, -4.5) <= 1.4
+
+
+def cross(x, y):
+    return (abs(x - y) <= 1.6 or abs(x + y) <= 1.6) and abs(x) <= 5.2 and abs(y) <= 5.2
+
+
+def swap_icon(x, y):
+    top = (-5 <= x <= 3 and -4.5 <= y <= -2.5) or (3 <= x <= 6.5 and abs(y + 3.5) <= (6.5 - x) * 0.85)
+    bot = (-3 <= x <= 5 and 2.5 <= y <= 4.5) or (-6.5 <= x <= -3 and abs(y - 3.5) <= (x + 6.5) * 0.85)
+    return top or bot
+
+
+def grid(x, y):
+    return any(abs(x - cx) <= 2.2 and abs(y - cy) <= 2.2 for cx in (-3.2, 3.2) for cy in (-3.2, 3.2))
+
+
+def back(x, y):
+    return (-2 <= x <= 6 and abs(y) <= 1.0) or (-6.5 <= x <= -2 and abs(y) <= (x + 6.5) * 1.0)
+
+
+def title_background():
+    W, H = 480, 270
+    rnd = random.Random(11)
+    px = [(0, 0, 0, 255)] * (W * H)
+
+    def put(x, y, c):
+        if 0 <= x < W and 0 <= y < H:
+            px[y * W + x] = c
+
+    sky = [hexrgba(c) for c in ("0a0f24", "0e1430", "131a3b", "1a1f47", "221f4f", "2c2457", "3a2a5e")]
+    bayer = [[0, 2], [3, 1]]
+    for y in range(H):
+        t = y / (H - 1) * (len(sky) - 1)
+        i, f = int(t), t - int(t)
+        for x in range(W):
+            c = sky[min(i + (1 if f * 4 > bayer[y % 2][x % 2] + 0.5 else 0), len(sky) - 1)]
+            put(x, y, c)
+
+    for _ in range(150):
+        x, y = rnd.randrange(W), rnd.randrange(170)
+        c = rnd.choice([hexrgba("ffffff"), hexrgba("9fd8ff"), hexrgba("5ef2ff"), hexrgba("c9b8ff")])
+        put(x, y, c)
+        if rnd.random() < 0.12:
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                put(x + dx, y + dy, (c[0], c[1], c[2], 255) if rnd.random() < 0.5 else hexrgba("3a4a8a"))
+
+    mx, my, mr = 412, 46, 20
+    for y in range(my - mr, my + mr + 1):
+        for x in range(mx - mr, mx + mr + 1):
+            d = math.hypot(x - mx, y - my)
+            if d <= mr:
+                shade = hexrgba("f4f1dc") if (x - mx) + (y - my) < 8 else hexrgba("d6d2b8")
+                if math.hypot(x - mx + 6, y - my - 4) < 4 or math.hypot(x - mx - 7, y - my + 6) < 3:
+                    shade = hexrgba("bdb89c")
+                put(x, y, shade)
+            elif d <= mr + 2 and (x + y) % 2 == 0:
+                put(x, y, hexrgba("3a3a66"))
+
+    far, near = hexrgba("161a38"), hexrgba("10132a")
+    for layer, col, base, hmin, hmax in ((0, far, 236, 40, 110), (1, near, 246, 20, 70)):
+        x = -rnd.randrange(20)
+        while x < W:
+            w = rnd.randrange(18, 40)
+            h = rnd.randrange(hmin, hmax)
+            if 150 < x + w // 2 < 330:
+                h = h // 3
+            for yy in range(base - h, base):
+                for xx in range(x, x + w):
+                    put(xx, yy, col)
+            for wy in range(base - h + 6, base - 4, 9):
+                for wx in range(x + 4, x + w - 4, 7):
+                    if rnd.random() < (0.25 if layer == 0 else 0.15):
+                        put(wx, wy, hexrgba("3ff5e3" if rnd.random() < 0.6 else "ffd25e"))
+                        put(wx + 1, wy, hexrgba("2aa89c"))
+            x += w + rnd.randrange(2, 10)
+
+    tile = [[TILE_PAL[c] for c in row] for row in TILE]
+
+    def bricks(x0, y0, w, h):
+        for y in range(h):
+            for x in range(w):
+                put(x0 + x, y0 + y, tile[y % 16][x % 16])
+
+    bricks(0, 246, W, 24)
+    bricks(40, 190, 80, 8)
+    bricks(360, 120, 80, 8)
+    bricks(440, 120, 8, 126)
+    spike = [[SPIKE_PAL.get(c) for c in row] for row in SPIKE]
+    for sx in range(176, 304, 16):
+        for y in range(10):
+            for x in range(16):
+                if spike[y][x]:
+                    put(sx + x, 236 + y, spike[y][x])
+    pad = [[PAD_PAL.get(c) for c in row] for row in PAD]
+    for y in range(16):
+        for x in range(16):
+            if pad[y][x]:
+                put(380 + x, 230 + y, pad[y][x])
+
+    write_rgba(os.path.join(UI, "title_bg.png"), W, H, px)
+
+
+def ui_sprites():
+    os.makedirs(UI, exist_ok=True)
+    write_png(os.path.join(UI, "panel.png"), PANEL, PANEL_PAL)
+    write_png(os.path.join(UI, "button.png"), BUTTON, BUTTON_PAL)
+    write_png(os.path.join(UI, "track.png"), TRACK, TRACK_PAL)
+    write_png(os.path.join(UI, "fill.png"), FILL, FILL_PAL)
+    write_png(os.path.join(UI, "knob.png"), KNOB, BUTTON_PAL)
+    write_png(os.path.join(UI, "pill.png"), PILL, PILL_PAL)
+    for name, fn in (("gear", gear), ("restart", restart), ("play", play), ("exit", door_exit),
+                     ("lock", lock), ("check", check), ("close", cross), ("swap", swap_icon),
+                     ("grid", grid), ("back", back)):
+        write_png(os.path.join(UI, "icon_" + name + ".png"), icon(fn), ICON_PAL)
+    title_background()
+
 
 SR = 44100
 
@@ -258,7 +469,6 @@ def sfx():
 
     write_wav(os.path.join(AUDIO, "jump.wav"), sweep(0.13, 280, 640, "sq", 1.5, 0.25), 0.45)
 
-    # swap: shimmering down-up warp with a little noise
     n = int(0.28 * SR)
     out, p1, p2 = [], 0.0, 0.0
     for i in range(n):
@@ -303,9 +513,11 @@ def sfx():
             out.append((square(ph, 0.25) * 0.6 + triangle(ph * 0.5) * 0.4) * env)
     write_wav(os.path.join(AUDIO, "clear.wav"), out, 0.55)
 
+    write_wav(os.path.join(AUDIO, "ui_click.wav"), sweep(0.07, 660, 1320, "sq", 2.0, 0.25), 0.35)
+    write_wav(os.path.join(AUDIO, "ui_hover.wav"), sweep(0.03, 1500, 1700, "sin", 1.5), 0.18)
+
 
 def bgm():
-    # 8 bars, 4/4, 104 BPM: Am - F - C - G (x2), bass + arpeggio + soft hats.
     bpm = 104
     beat = 60 / bpm
     total = int(8 * 4 * beat * SR)
@@ -351,6 +563,7 @@ def bgm():
 
 if __name__ == "__main__":
     sprites()
+    ui_sprites()
     sfx()
     bgm()
     print("assets generated")

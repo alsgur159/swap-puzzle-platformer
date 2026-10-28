@@ -1,8 +1,6 @@
 using UnityEditor;
 using UnityEngine;
 
-// Assets/Art 의 픽셀아트를 임포트 설정하고 프리팹의 단색 사각형을 교체한다.
-// 프리팹 스케일은 1로 되돌리고, 크기는 콜라이더(와 타일 스프라이트 size)로 표현한다.
 public static class ArtApplier
 {
     const string ArtDir = "Assets/Art";
@@ -39,7 +37,7 @@ public static class ArtApplier
 
         var settings = new TextureImporterSettings();
         imp.ReadTextureSettings(settings);
-        settings.spriteMeshType = SpriteMeshType.FullRect; // Tiled 그리기에 필요
+        settings.spriteMeshType = SpriteMeshType.FullRect;
         settings.spriteAlignment = (int)SpriteAlignment.Center;
         imp.SetTextureSettings(settings);
         imp.SaveAndReimport();
