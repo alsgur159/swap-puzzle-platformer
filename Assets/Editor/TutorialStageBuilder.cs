@@ -18,10 +18,7 @@ public static class TutorialStageBuilder
             Make(3, 3, "벽에 가려지거나 너무 먼 대상은 교환할 수 없어요 (조준선이 빨갛게 변함)", Stage3),
         };
 
-        var list = new EditorBuildSettingsScene[paths.Length];
-        for (int i = 0; i < paths.Length; i++) list[i] = new EditorBuildSettingsScene(paths[i], true);
-        EditorBuildSettings.scenes = list;
-
+        MainStageBuilder.RegisterStages();
         AssetDatabase.SaveAssets();
         Debug.Log("Tutorial stages built: " + string.Join(", ", paths));
     }

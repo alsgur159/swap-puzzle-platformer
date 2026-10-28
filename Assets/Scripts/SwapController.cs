@@ -62,8 +62,11 @@ public class SwapController : MonoBehaviour
 
         UpdateAimVisual(from, mouseWorld, target, inReach);
 
-        if (mouse.leftButton.wasPressedThisFrame && inReach)
-            TrySwap(target);
+        if (mouse.leftButton.wasPressedThisFrame)
+        {
+            if (inReach) TrySwap(target);
+            else SoundFx.SwapFail();
+        }
     }
 
     ISwappable FindTarget(Vector2 point)
@@ -135,8 +138,12 @@ public class SwapController : MonoBehaviour
         Vector2 tPos = target.Rb != null ? target.Rb.position : (Vector2)target.Transform.position;
         Vector2 tVel = target.Rb != null ? target.Rb.linearVelocity : Vector2.zero;
 
-        if (!IsFree(player.Col, tPos, target.Col)) return;
-        if (!target.IsAnchor && !IsFree(target.Col, myPos, player.Col)) return;
+        if (!IsFree(player.Col, tPos, target.Col) ||
+            (!target.IsAnchor && !IsFree(target.Col, myPos, player.Col)))
+        {
+            SoundFx.SwapFail();
+            return;
+        }
 
         prb.position = tPos;
         prb.transform.position = tPos;
@@ -151,6 +158,7 @@ public class SwapController : MonoBehaviour
 
         Physics2D.SyncTransforms();
         SwapsLeft--;
+        SoundFx.Swap();
         Swapped?.Invoke();
     }
 

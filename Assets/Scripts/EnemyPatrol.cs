@@ -8,6 +8,7 @@ public class EnemyPatrol : MonoBehaviour
 
     Rigidbody2D rb;
     Collider2D col;
+    SpriteRenderer sr;
     float startX;
     int dir = 1;
 
@@ -15,6 +16,7 @@ public class EnemyPatrol : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         col = GetComponent<Collider2D>();
+        sr = GetComponent<SpriteRenderer>();
         startX = transform.position.x;
     }
 
@@ -28,6 +30,7 @@ public class EnemyPatrol : MonoBehaviour
         else if (HitWall(b) || !HasGroundAhead(b)) dir = -dir;
 
         rb.linearVelocity = new Vector2(dir * speed, rb.linearVelocity.y);
+        if (sr != null) sr.flipX = dir < 0;
     }
 
     bool HitWall(Bounds b)

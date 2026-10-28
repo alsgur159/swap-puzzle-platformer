@@ -74,7 +74,17 @@ public static class PrefabBuilder
         var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
         if (parent != null) go.transform.SetParent(parent, false);
         go.transform.position = pos;
-        if (size.HasValue) go.transform.localScale = new Vector3(size.Value.x, size.Value.y, 1f);
+        if (size.HasValue)
+        {
+            // 타일 스프라이트(블록·가시)는 늘리지 않고 반복해서 그리도록 크기만 바꾼다.
+            var sr = go.GetComponent<SpriteRenderer>();
+            if (sr != null && sr.drawMode == SpriteDrawMode.Tiled)
+            {
+                sr.size = size.Value;
+                go.GetComponent<BoxCollider2D>().size = size.Value;
+            }
+            else go.transform.localScale = new Vector3(size.Value.x, size.Value.y, 1f);
+        }
         return go;
     }
 

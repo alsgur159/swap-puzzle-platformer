@@ -17,6 +17,7 @@ public class GameManager : MonoBehaviour
     {
         Instance = this;
         Time.timeScale = 1f;
+        SoundFx.Ensure();
     }
 
     void Update()
@@ -42,9 +43,12 @@ public class GameManager : MonoBehaviour
     {
         if (cleared) return;
         cleared = true;
+        SoundFx.Clear();
         if (stage != null) PlayerPrefs.SetInt("Clear_" + stage.stageNumber, 1);
         Invoke(nameof(LoadNext), 1.5f);
     }
+
+    bool IsLastStage => SceneManager.GetActiveScene().buildIndex + 1 >= SceneManager.sceneCountInBuildSettings;
 
     void LoadNext()
     {
@@ -69,7 +73,7 @@ public class GameManager : MonoBehaviour
             GUI.Label(new Rect(Screen.width - 420, 12, 400, 40), "STAGE " + stage.stageNumber, right);
 
         var full = new Rect(0, 0, Screen.width, Screen.height);
-        if (cleared) GUI.Label(full, "CLEAR!", mid);
+        if (cleared) GUI.Label(full, IsLastStage ? "ALL CLEAR!" : "CLEAR!", mid);
         else if (paused) GUI.Label(full, "일시정지 (Esc)", mid);
         else if (swap != null && swap.SwapsMax > 0 && swap.SwapsLeft == 0)
             GUI.Label(new Rect(0, Screen.height - 100, Screen.width, 50), "교환 횟수 소진 - R 키로 재시작", small);

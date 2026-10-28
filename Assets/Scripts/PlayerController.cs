@@ -11,6 +11,7 @@ public class PlayerController : MonoBehaviour
 
     Rigidbody2D rb;
     BoxCollider2D col;
+    SpriteRenderer sr;
     bool jumpQueued;
     bool dead;
 
@@ -21,6 +22,7 @@ public class PlayerController : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         col = GetComponent<BoxCollider2D>();
+        sr = GetComponent<SpriteRenderer>();
         rb.freezeRotation = true;
         rb.gravityScale = 3f;
         rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
@@ -48,7 +50,13 @@ public class PlayerController : MonoBehaviour
         float accel = grounded ? groundAccel : airAccel;
         v.x = Mathf.MoveTowards(v.x, input * moveSpeed, accel * Time.fixedDeltaTime);
 
-        if (jumpQueued && grounded) v.y = jumpSpeed;
+        if (input != 0f && sr != null) sr.flipX = input < 0f;
+
+        if (jumpQueued && grounded)
+        {
+            v.y = jumpSpeed;
+            SoundFx.Jump();
+        }
         jumpQueued = false;
 
         rb.linearVelocity = v;
@@ -72,6 +80,7 @@ public class PlayerController : MonoBehaviour
     {
         if (dead) return;
         dead = true;
+        SoundFx.Death();
         GameManager.Instance.Restart();
     }
 }
