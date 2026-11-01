@@ -1,6 +1,5 @@
 using UnityEngine;
 
-[RequireComponent(typeof(Rigidbody2D), typeof(Collider2D))]
 public class EnemyPatrol : MonoBehaviour
 {
     public float speed = 2f;
@@ -22,28 +21,38 @@ public class EnemyPatrol : MonoBehaviour
 
     void FixedUpdate()
     {
-        Bounds b = col.bounds;
         float x = rb.position.x;
 
-        if (dir > 0 && x > startX + patrolRange) dir = -1;
-        else if (dir < 0 && x < startX - patrolRange) dir = 1;
-        else if (HitWall(b) || !HasGroundAhead(b)) dir = -dir;
+        if (dir > 0 && x > startX + patrolRange)
+            dir = -1;
+        else if (dir < 0 && x < startX - patrolRange)
+            dir = 1;
+        else if (HitWall() || !HasGroundAhead())
+            dir = -dir;
 
         rb.linearVelocity = new Vector2(dir * speed, rb.linearVelocity.y);
-        if (sr != null) sr.flipX = dir < 0;
+        sr.flipX = dir < 0;
     }
 
-    bool HitWall(Bounds b)
+    bool HitWall()
     {
-        Vector2 origin = new Vector2(b.center.x + dir * (b.extents.x + 0.02f), b.center.y);
-        return Solid(Physics2D.Raycast(origin, Vector2.right * dir, 0.1f));
+        Vector2 origin = new Vector2(col.bounds.center.x + dir * (col.bounds.extents.x + 0.02f), col.bounds.center.y);
+        RaycastHit2D hit = Physics2D.Raycast(origin, Vector2.right * dir, 0.1f);
+        return IsSolid(hit);
     }
 
-    bool HasGroundAhead(Bounds b)
+    bool HasGroundAhead()
     {
-        Vector2 origin = new Vector2(b.center.x + dir * (b.extents.x + 0.1f), b.min.y + 0.05f);
-        return Solid(Physics2D.Raycast(origin, Vector2.down, 0.4f));
+        Vector2 origin = new Vector2(col.bounds.center.x + dir * (col.bounds.extents.x + 0.1f), col.bounds.min.y + 0.05f);
+        RaycastHit2D hit = Physics2D.Raycast(origin, Vector2.down, 0.4f);
+        return IsSolid(hit);
     }
 
-    bool Solid(RaycastHit2D h) => h.collider != null && !h.collider.isTrigger && h.collider != col;
+    bool IsSolid(RaycastHit2D hit)
+    {
+        if (hit.collider == null) return false;
+        if (hit.collider.isTrigger) return false;
+        if (hit.collider == col) return false;
+        return true;
+    }
 }

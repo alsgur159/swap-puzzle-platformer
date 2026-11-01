@@ -1,67 +1,141 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class GameManager : MonoBehaviour
 {
-    public static GameManager Instance { get; private set; }
+    public static GameManager instance;
 
-    public SwapController swap;
-    public StageInfo stage;
+    public Text swapText;
+    public Text stageText;
+    public Text hintText;
+    public GameObject pausePanel;
+    public GameObject settingsPanel;
+    public GameObject clearPanel;
+    public Text clearText;
+    public GameObject nextButton;
 
-    public bool Cleared { get; private set; }
-    public bool Paused { get; private set; }
-    public bool InputLocked => Paused || Cleared;
-    public float StageTime { get; private set; }
-    public bool NewRecord { get; private set; }
-
-    public event System.Action ClearedEvent;
+    StageInfo stage;
+    SwapController swap;
+    bool isPaused;
+    bool isCleared;
 
     void Awake()
     {
-        Instance = this;
+        instance = this;
         Time.timeScale = 1f;
-        SoundFx.Ensure();
-        gameObject.AddComponent<GameHUD>();
+    }
+
+    void Start()
+    {
+        stage = FindFirstObjectByType<StageInfo>();
+        swap = FindFirstObjectByType<SwapController>();
+
+        stageText.text = "STAGE " + stage.stageNumber;
+        hintText.text = stage.hint;
+
+        pausePanel.SetActive(false);
+        settingsPanel.SetActive(false);
+        clearPanel.SetActive(false);
     }
 
     void Update()
     {
-        if (!InputLocked) StageTime += Time.deltaTime;
+        if (stage.swapCount > 0)
+            swapText.text = "남은 교환 : " + swap.swapsLeft + " / " + swap.maxSwaps;
+        else
+            swapText.text = "";
 
-        var kb = Keyboard.current;
-        if (kb != null && kb.rKey.wasPressedThisFrame && UIStack.Count == 0) Restart();
+        if (Keyboard.current.escapeKey.wasPressedThisFrame && !isCleared)
+        {
+            if (settingsPanel.activeSelf)
+                CloseSettings();
+            else if (isPaused)
+                Resume();
+            else
+                Pause();
+        }
+
+        if (Keyboard.current.rKey.wasPressedThisFrame && !isPaused)
+            Restart();
     }
 
-    public void SetPaused(bool paused)
+    public bool IsStopped()
     {
-        Paused = paused;
-        Time.timeScale = paused ? 0f : 1f;
+        return isPaused || isCleared;
+    }
+
+    public void Pause()
+    {
+        isPaused = true;
+        Time.timeScale = 0f;
+        pausePanel.SetActive(true);
+    }
+
+    public void Resume()
+    {
+        isPaused = false;
+        Time.timeScale = 1f;
+        pausePanel.SetActive(false);
+        settingsPanel.SetActive(false);
+    }
+
+    public void OpenSettings()
+    {
+        isPaused = true;
+        Time.timeScale = 0f;
+        settingsPanel.SetActive(true);
+    }
+
+    public void CloseSettings()
+    {
+        settingsPanel.SetActive(false);
+        if (!pausePanel.activeSelf)
+            Resume();
     }
 
     public void Restart()
     {
         Time.timeScale = 1f;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    public void GoToTitle()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene("Title");
+    }
+
+    public void NextStage()
+    {
+        int next = stage.stageNumber + 1;
+        SceneManager.LoadScene("Stage_" + next.ToString("00"));
+    }
+
+    public void QuitGame()
+    {
+        Application.Quit();
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#endif
     }
 
     public void StageClear()
     {
-        if (Cleared) return;
-        Cleared = true;
-        SoundFx.Clear();
-        if (stage != null)
-        {
-            int used = swap != null ? swap.SwapsMax - swap.SwapsLeft : 0;
-            NewRecord = SceneFlow.RecordClear(stage.stageNumber, StageTime, used);
-        }
-        ClearedEvent?.Invoke();
-    }
+        if (isCleared) return;
+        isCleared = true;
 
-    public void LoadNext()
-    {
-        int next = stage != null ? stage.stageNumber + 1 : 1;
-        if (next <= SceneFlow.StageCount) SceneFlow.LoadStage(next);
-        else SceneFlow.LoadTitle(false);
+        if (AudioManager.instance != null) AudioManager.instance.PlayClear();
+
+        if (stage.stageNumber > PlayerPrefs.GetInt("ClearStage", 0))
+            PlayerPrefs.SetInt("ClearStage", stage.stageNumber);
+
+        clearPanel.SetActive(true);
+        if (stage.stageNumber == 10)
+        {
+            clearText.text = "모든 스테이지 클리어!";
+            nextButton.SetActive(false);
+        }
     }
 }

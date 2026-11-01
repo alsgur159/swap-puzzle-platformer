@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-[RequireComponent(typeof(Rigidbody2D), typeof(BoxCollider2D))]
 public class PlayerController : MonoBehaviour
 {
     public float moveSpeed = 7f;
@@ -12,68 +11,71 @@ public class PlayerController : MonoBehaviour
     Rigidbody2D rb;
     BoxCollider2D col;
     SpriteRenderer sr;
-    bool jumpQueued;
-    bool dead;
-
-    public Rigidbody2D Rb => rb;
-    public BoxCollider2D Col => col;
+    bool jumpPressed;
+    bool isDead;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         col = GetComponent<BoxCollider2D>();
         sr = GetComponent<SpriteRenderer>();
+
         rb.freezeRotation = true;
         rb.gravityScale = 3f;
         rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-        col.sharedMaterial = new PhysicsMaterial2D("Player") { friction = 0f, bounciness = 0f };
-    }
 
-    static bool Locked => GameManager.Instance != null && GameManager.Instance.InputLocked;
+        PhysicsMaterial2D noFriction = new PhysicsMaterial2D();
+        noFriction.friction = 0f;
+        col.sharedMaterial = noFriction;
+    }
 
     void Update()
     {
-        if (Locked) return;
-        var kb = Keyboard.current;
-        if (kb != null && kb.spaceKey.wasPressedThisFrame) jumpQueued = true;
+        if (GameManager.instance != null && GameManager.instance.IsStopped())
+            return;
+
+        if (Keyboard.current.spaceKey.wasPressedThisFrame)
+            jumpPressed = true;
     }
 
     void FixedUpdate()
     {
-        var kb = Keyboard.current;
         float input = 0f;
-        if (kb != null && !Locked)
+        if (GameManager.instance == null || !GameManager.instance.IsStopped())
         {
-            if (kb.aKey.isPressed) input -= 1f;
-            if (kb.dKey.isPressed) input += 1f;
+            if (Keyboard.current.aKey.isPressed) input = -1f;
+            if (Keyboard.current.dKey.isPressed) input = 1f;
         }
 
         bool grounded = IsGrounded();
-        Vector2 v = rb.linearVelocity;
-        float accel = grounded ? groundAccel : airAccel;
-        v.x = Mathf.MoveTowards(v.x, input * moveSpeed, accel * Time.fixedDeltaTime);
+        Vector2 velocity = rb.linearVelocity;
 
-        if (input != 0f && sr != null) sr.flipX = input < 0f;
+        float accel = groundAccel;
+        if (!grounded) accel = airAccel;
+        velocity.x = Mathf.MoveTowards(velocity.x, input * moveSpeed, accel * Time.fixedDeltaTime);
 
-        if (jumpQueued && grounded)
+        if (input < 0) sr.flipX = true;
+        else if (input > 0) sr.flipX = false;
+
+        if (jumpPressed && grounded)
         {
-            v.y = jumpSpeed;
-            SoundFx.Jump();
+            velocity.y = jumpSpeed;
+            if (AudioManager.instance != null) AudioManager.instance.PlayJump();
         }
-        jumpQueued = false;
+        jumpPressed = false;
 
-        rb.linearVelocity = v;
+        rb.linearVelocity = velocity;
     }
 
     bool IsGrounded()
     {
-        Bounds b = col.bounds;
-        Vector2 center = new Vector2(b.center.x, b.min.y - 0.05f);
-        Vector2 size = new Vector2(b.size.x * 0.9f, 0.1f);
-        var hits = Physics2D.OverlapBoxAll(center, size, 0f);
-        foreach (var h in hits)
+        Vector2 center = new Vector2(col.bounds.center.x, col.bounds.min.y - 0.05f);
+        Vector2 size = new Vector2(col.bounds.size.x * 0.9f, 0.1f);
+        Collider2D[] hits = Physics2D.OverlapBoxAll(center, size, 0f);
+
+        for (int i = 0; i < hits.Length; i++)
         {
-            if (h.isTrigger || h == col) continue;
+            if (hits[i].isTrigger || hits[i] == col) continue;
             return true;
         }
         return false;
@@ -81,9 +83,11 @@ public class PlayerController : MonoBehaviour
 
     public void Die()
     {
-        if (dead || (GameManager.Instance != null && GameManager.Instance.Cleared)) return;
-        dead = true;
-        SoundFx.Death();
-        GameManager.Instance.Restart();
+        if (isDead) return;
+        if (GameManager.instance != null && GameManager.instance.IsStopped()) return;
+
+        isDead = true;
+        if (AudioManager.instance != null) AudioManager.instance.PlayDeath();
+        GameManager.instance.Restart();
     }
 }

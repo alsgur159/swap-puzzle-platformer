@@ -1,177 +1,204 @@
-using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 public class SwapController : MonoBehaviour
 {
-    public PlayerController player;
     public float range = 8f;
     public Sprite squareSprite;
     public Material unlitMaterial;
-    public Color validColor = new Color(0.3f, 0.75f, 1f, 1f);
-    public Color invalidColor = new Color(1f, 0.35f, 0.35f, 0.6f);
 
-    public int SwapsLeft { get; private set; }
-    public int SwapsMax { get; private set; }
+    public int swapsLeft;
+    public int maxSwaps;
 
-    public event Action Swapped;
-
+    Rigidbody2D rb;
+    Collider2D col;
     Camera cam;
     LineRenderer line;
     SpriteRenderer highlight;
 
     void Start()
     {
+        rb = GetComponent<Rigidbody2D>();
+        col = GetComponent<Collider2D>();
         cam = Camera.main;
-        var info = FindFirstObjectByType<StageInfo>();
-        SwapsMax = SwapsLeft = info != null ? info.swapCount : 3;
 
-        var lineGo = new GameObject("AimLine");
-        lineGo.transform.SetParent(transform, false);
-        line = lineGo.AddComponent<LineRenderer>();
+        StageInfo stage = FindFirstObjectByType<StageInfo>();
+        maxSwaps = stage.swapCount;
+        swapsLeft = maxSwaps;
+
+        GameObject lineObj = new GameObject("AimLine");
+        lineObj.transform.SetParent(transform);
+        line = lineObj.AddComponent<LineRenderer>();
         line.positionCount = 2;
         line.widthMultiplier = 0.07f;
-        line.sharedMaterial = unlitMaterial;
+        line.material = unlitMaterial;
         line.sortingOrder = 20;
 
-        var hlGo = new GameObject("TargetHighlight");
-        hlGo.transform.SetParent(transform, false);
-        highlight = hlGo.AddComponent<SpriteRenderer>();
+        GameObject highlightObj = new GameObject("Highlight");
+        highlightObj.transform.SetParent(transform);
+        highlight = highlightObj.AddComponent<SpriteRenderer>();
         highlight.sprite = squareSprite;
-        highlight.sharedMaterial = unlitMaterial;
-        highlight.color = new Color(validColor.r, validColor.g, validColor.b, 0.35f);
+        highlight.material = unlitMaterial;
+        highlight.color = new Color(0.3f, 0.75f, 1f, 0.35f);
         highlight.sortingOrder = 19;
-        highlight.enabled = false;
     }
 
     void Update()
     {
-        var mouse = Mouse.current;
-        if (mouse == null || cam == null || Time.timeScale == 0f) return;
+        line.enabled = false;
+        highlight.enabled = false;
 
-        bool locked = GameManager.Instance != null && GameManager.Instance.InputLocked;
-        bool overUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
-        line.enabled = SwapsMax > 0 && !locked && !overUI;
-        if (!line.enabled) { highlight.enabled = false; return; }
+        if (maxSwaps == 0) return;
+        if (GameManager.instance != null && GameManager.instance.IsStopped()) return;
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
 
-        Vector2 mouseWorld = cam.ScreenToWorldPoint(mouse.position.ReadValue());
-        Vector2 from = player.Rb.position;
+        Vector2 mousePos = cam.ScreenToWorldPoint(Mouse.current.position.ReadValue());
+        Vector2 myPos = rb.position;
 
-        ISwappable target = FindTarget(mouseWorld);
-        bool inReach = target != null && SwapsLeft > 0
-            && Vector2.Distance(from, target.Transform.position) <= range
-            && HasLineOfSight(from, target);
-
-        UpdateAimVisual(from, mouseWorld, target, inReach);
-
-        if (mouse.leftButton.wasPressedThisFrame)
+        Collider2D target = FindTarget(mousePos);
+        bool canSwap = false;
+        if (target != null && swapsLeft > 0)
         {
-            if (inReach) TrySwap(target);
-            else SoundFx.SwapFail();
+            float distance = Vector2.Distance(myPos, target.transform.position);
+            if (distance <= range && CanSee(myPos, target))
+                canSwap = true;
+        }
+
+        DrawAim(myPos, mousePos, target, canSwap);
+
+        if (Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            if (canSwap)
+                Swap(target);
+            else if (AudioManager.instance != null)
+                AudioManager.instance.PlaySwapFail();
         }
     }
 
-    ISwappable FindTarget(Vector2 point)
+    Collider2D FindTarget(Vector2 point)
     {
-        foreach (var c in Physics2D.OverlapPointAll(point))
+        Collider2D[] hits = Physics2D.OverlapPointAll(point);
+        for (int i = 0; i < hits.Length; i++)
         {
-            var s = c.GetComponentInParent<ISwappable>();
-            if (s != null && s.CanSwap()) return s;
+            if (hits[i].GetComponent<ISwappable>() != null)
+                return hits[i];
         }
         return null;
     }
 
-    bool HasLineOfSight(Vector2 from, ISwappable target)
+    bool CanSee(Vector2 from, Collider2D target)
     {
-        Bounds b = target.Col.bounds;
-        const float inset = 0.05f;
-        Vector2 min = (Vector2)b.min + Vector2.one * inset;
-        Vector2 max = (Vector2)b.max - Vector2.one * inset;
-        Vector2[] samples =
+        Bounds b = target.bounds;
+        float left = b.min.x + 0.05f;
+        float right = b.max.x - 0.05f;
+        float bottom = b.min.y + 0.05f;
+        float top = b.max.y - 0.05f;
+
+        Vector2[] points = new Vector2[5];
+        points[0] = b.center;
+        points[1] = new Vector2(left, bottom);
+        points[2] = new Vector2(right, top);
+        points[3] = new Vector2(left, top);
+        points[4] = new Vector2(right, bottom);
+
+        for (int i = 0; i < points.Length; i++)
         {
-            b.center,
-            min, max,
-            new Vector2(min.x, max.y),
-            new Vector2(max.x, min.y),
-        };
-        foreach (var p in samples)
-            if (!IsBlocked(from, p, target)) return true;
+            if (!IsBlocked(from, points[i], target))
+                return true;
+        }
         return false;
     }
 
-    bool IsBlocked(Vector2 from, Vector2 to, ISwappable target)
+    bool IsBlocked(Vector2 from, Vector2 to, Collider2D target)
     {
-        foreach (var h in Physics2D.LinecastAll(from, to))
+        RaycastHit2D[] hits = Physics2D.LinecastAll(from, to);
+        for (int i = 0; i < hits.Length; i++)
         {
-            if (h.collider.isTrigger) continue;
-            if (h.collider == player.Col) continue;
-            if (h.collider == target.Col) continue;
+            Collider2D c = hits[i].collider;
+            if (c.isTrigger || c == col || c == target) continue;
             return true;
         }
         return false;
     }
 
-    void UpdateAimVisual(Vector2 from, Vector2 mouseWorld, ISwappable target, bool inReach)
+    void DrawAim(Vector2 from, Vector2 mousePos, Collider2D target, bool canSwap)
     {
-        Vector2 end = mouseWorld;
-        Vector2 dir = mouseWorld - from;
-        if (dir.magnitude > range) end = from + dir.normalized * range;
-        if (inReach) end = target.Transform.position;
+        Vector2 end = mousePos;
+        if (Vector2.Distance(from, mousePos) > range)
+            end = from + (mousePos - from).normalized * range;
+        if (canSwap)
+            end = target.transform.position;
 
+        line.enabled = true;
         line.SetPosition(0, from);
         line.SetPosition(1, end);
-        Color c = inReach ? validColor : invalidColor;
-        line.startColor = line.endColor = c;
 
-        highlight.enabled = inReach;
-        if (inReach)
+        if (canSwap)
         {
-            Bounds b = target.Col.bounds;
-            highlight.transform.position = b.center;
-            highlight.transform.localScale = new Vector3(b.size.x + 0.2f, b.size.y + 0.2f, 1f);
+            line.startColor = new Color(0.3f, 0.75f, 1f, 1f);
+            line.endColor = new Color(0.3f, 0.75f, 1f, 1f);
+            highlight.enabled = true;
+            highlight.transform.position = target.bounds.center;
+            highlight.transform.localScale = new Vector3(target.bounds.size.x + 0.2f, target.bounds.size.y + 0.2f, 1f);
+        }
+        else
+        {
+            line.startColor = new Color(1f, 0.35f, 0.35f, 0.6f);
+            line.endColor = new Color(1f, 0.35f, 0.35f, 0.6f);
         }
     }
 
-    void TrySwap(ISwappable target)
+    void Swap(Collider2D target)
     {
-        Rigidbody2D prb = player.Rb;
-        Vector2 myPos = prb.position;
-        Vector2 myVel = prb.linearVelocity;
-        Vector2 tPos = target.Rb != null ? target.Rb.position : (Vector2)target.Transform.position;
-        Vector2 tVel = target.Rb != null ? target.Rb.linearVelocity : Vector2.zero;
+        ISwappable swappable = target.GetComponent<ISwappable>();
+        Rigidbody2D targetRb = target.attachedRigidbody;
 
-        if (!IsFree(player.Col, tPos, target.Col) ||
-            (!target.IsAnchor && !IsFree(target.Col, myPos, player.Col)))
+        Vector2 myPos = rb.position;
+        Vector2 myVelocity = rb.linearVelocity;
+        Vector2 targetPos = target.transform.position;
+        Vector2 targetVelocity = Vector2.zero;
+        if (targetRb != null)
         {
-            SoundFx.SwapFail();
+            targetPos = targetRb.position;
+            targetVelocity = targetRb.linearVelocity;
+        }
+
+        bool blocked = !IsEmpty(col, targetPos, target);
+        if (!swappable.IsAnchor() && !IsEmpty(target, myPos, col))
+            blocked = true;
+
+        if (blocked)
+        {
+            if (AudioManager.instance != null) AudioManager.instance.PlaySwapFail();
             return;
         }
 
-        prb.position = tPos;
-        prb.transform.position = tPos;
-        prb.linearVelocity = tVel;
+        rb.position = targetPos;
+        transform.position = targetPos;
+        rb.linearVelocity = targetVelocity;
 
-        if (!target.IsAnchor)
+        if (!swappable.IsAnchor())
         {
-            target.Rb.position = myPos;
-            target.Rb.transform.position = myPos;
-            target.Rb.linearVelocity = myVel;
+            targetRb.position = myPos;
+            target.transform.position = myPos;
+            targetRb.linearVelocity = myVelocity;
         }
 
         Physics2D.SyncTransforms();
-        SwapsLeft--;
-        SoundFx.Swap();
-        Swapped?.Invoke();
+        swapsLeft--;
+        if (AudioManager.instance != null) AudioManager.instance.PlaySwap();
     }
 
-    bool IsFree(Collider2D mover, Vector2 pos, Collider2D ignore)
+    bool IsEmpty(Collider2D mover, Vector2 pos, Collider2D ignore)
     {
-        Vector2 offset = (Vector2)mover.bounds.center - (Vector2)mover.transform.position;
+        Vector2 offset = mover.bounds.center - mover.transform.position;
         Vector2 size = mover.bounds.size * 0.9f;
-        foreach (var h in Physics2D.OverlapBoxAll(pos + offset, size, 0f))
+        Collider2D[] hits = Physics2D.OverlapBoxAll(pos + offset, size, 0f);
+
+        for (int i = 0; i < hits.Length; i++)
         {
-            if (h.isTrigger || h == mover || h == ignore) continue;
+            if (hits[i].isTrigger || hits[i] == mover || hits[i] == ignore) continue;
             return false;
         }
         return true;
